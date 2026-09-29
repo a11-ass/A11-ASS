@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+
+# 数据库与缓存
+*.db
+*.sqlite
+*.sqlite3
+*.cache
+train.cache
+val.cache
+
+# 模型权重（可选，体积大按需保留）
+# *.pt
+# *.pth
+# *.onnx
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+
+# Node
+node_modules/

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AnythingLLM 文档上传</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Microsoft YaHei",sans-serif;background:#f0f2f5;color:#333;padding:20px;max-width:720px;margin:0 auto}
+  h1{font-size:20px;margin-bottom:16px}
+  .card{background:#fff;border-radius:8px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+  label{display:block;font-size:13px;color:#666;margin:8px 0 4px}
+  input[type=text],input[type=password]{width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:13px}
+  select{width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:13px}
+  button{background:#4f6df5;color:#fff;border:none;padding:9px 18px;border-radius:4px;font-size:14px;cursor:pointer;margin-top:10px}
+  button:disabled{background:#aaa;cursor:not-allowed}
+  .small{font-size:12px;color:#888}
+  #log{background:#1e1e1e;color:#d4d4d4;padding:10px;border-radius:4px;font-family:Consolas,monospace;font-size:12px;height:200px;overflow:auto;white-space:pre-wrap}
+  .ok{color:#4ec9b0}.err{color:#f48771}
+</style>
+</head>
+<body>
+<h1>AnythingLLM 文档上传 + 向量化</h1>
+
+<div class="card">
+  <label>AnythingLLM 地址</label>
+  <input type="text" id="base" value="http://localhost:3001">
+  <label>API Key</label>
+  <input type="password" id="key" value="17QYEYP-1YEM9B2-QA4PGBV-EMTZF0W" placeholder="在 AnythingLLM 设置里创建后粘贴">
+  <button id="connectBtn">连接并读取工作区</button>
+  <span id="connState" class="small"></span>
+</div>
+
+<div class="card">
+  <label>目标工作区</label>
+  <select id="ws"><option value="">-- 先点连接 --</option></select>
+  <label>选择文件（可多选）</label>
+  <input type="file" id="files" multiple>
+  <button id="upBtn" disabled>上传并嵌入</button>
+</div>
+
+<div class="card">
+  <label>日志</label>
+  <div id="log"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let workspaces = [];
+
+function log(msg, cls=''){
+  const t = new Date().toLocaleTimeString();
+  $('log').innerHTML += `<span class="${cls}">[${t}] ${msg}</span>\n`;
+  $('log').scrollTop = $('log').scrollHeight;
+}
+
+function headers(extra={}){
+  return {Authorization:'Bearer '+$('key').value.trim(), ...extra};
+}
+
+async function req(method, path, opts={}){
+  const base = $('base').value.trim().replace(/\/$/,'');
+  const res = await fetch(base+path, {method, headers: headers(opts.headers||{}), body:opts.body});
+  const text = await res.text();
+  let json; try{ json = JSON.parse(text); }catch{ json = null; }
+  if(!res.ok) throw new Error(`${res.status} ${json?.error||text.slice(0,200)}`);
+  return json;
+}
+
+$('connectBtn').onclick = async () => {
+  $('connState').textContent='连接中...';
+  try{
+    const data = await req('GET','/api/v1/workspaces');
+    workspaces = data.workspaces||[];
+    if(!workspaces.length) throw new Error('没有工作区');
+    const sel = $('ws');
+    sel.innerHTML='';
+    workspaces.forEach((w,i)=>{
+      const o=document.createElement('option'); o.value=w.slug; o.textContent=`${i+1}. ${w.name}`; sel.appendChild(o);
+    });
+    sel.value = workspaces[0].slug;
+    $('connState').innerHTML='<span class="ok">已连接，工作区 '+workspaces.length+' 个，默认选第1个</span>';
+    $('upBtn').disabled=false;
+    log('连接成功：'+workspaces.map(w=>w.name).join('、'),'ok');
+  }catch(e){
+    $('connState').innerHTML='<span class="err">失败：'+e.message+'</span>';
+    log('连接失败：'+e.message,'err');
+  }
+};
+
+$('upBtn').onclick = async () => {
+  const files = $('files').files;
+  const slug = $('ws').value;
+  if(!slug){ log('请先连接工作区','err'); return; }
+  if(!files.length){ log('请先选择文件','err'); return; }
+  $('upBtn').disabled=true;
+  for(const f of files){
+    try{
+      log(`上传 ${f.name} ...`);
+      const fd = new FormData();
+      fd.append('file', f);
+      const up = await req('POST','/api/v1/document/upload',{body:fd});
+      const locs = (up.documents||[]).map(d=>d.location||d.name);
+      if(!locs.length) throw new Error('上传返回无 documents');
+      log(`  上传成功：${locs.join(',')}`,'ok');
+      log(`  向量化嵌入中...`);
+      const emb = await req('POST',`/api/v1/workspace/${slug}/update-embeddings`,
+        {headers:{'Content-Type':'application/json'}, body:JSON.stringify({adds:locs})});
+      log(`  嵌入完成：${(emb.documents||[]).length||'?'} 个文档`,'ok');
+    }catch(e){ log(`  失败：${e.message}`,'err'); }
+  }
+  $('upBtn').disabled=false;
+  log('全部处理完毕','ok');
+};
+</script>
+</body>
+</html>
