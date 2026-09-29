@@ -1,0 +1,20 @@
+[project]
+name = "anythingllm-mcp"
+version = "0.1.0"
+description = "MCP server wrapping the local AnythingLLM first workspace for Q&A (MVP)."
+requires-python = ">=3.10"
+dependencies = [
+    "mcp==2.0.0",
+    "httpx>=0.27",
+    "uvicorn>=0.30",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+anythingllm-mcp = "anythingllm_mcp.__main__:main"
