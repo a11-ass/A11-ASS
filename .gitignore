@@ -29,3 +29,6 @@ Thumbs.db
 
 # Node
 node_modules/
+
+# 大模型配置（含密钥，不提交）
+config.ini
