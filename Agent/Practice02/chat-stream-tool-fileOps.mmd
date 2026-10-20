@@ -1,0 +1,42 @@
+flowchart TD
+    subgraph 入口
+        A[用户输入自然语言]
+    end
+
+    subgraph 主流程
+        B{第一次调用<br>非流式 /chat/completions}
+        C{第二次调用<br>流式 /chat/completions}
+        A --> B
+        B -->|模型决定调用工具| D[本地执行工具函数]
+        B -->|直接回答| C
+        D --> E[把工具结果作为 tool role 回传]
+        E --> C
+        C --> F[打字机逐字输出给用户]
+    end
+
+    subgraph 工具层
+        D -- 调用 --> TOOLS[TOOLS_IMPL 字典<br>按名字分发]
+        TOOLS --> T1[getDate<br>subprocess 调 date /t]
+        TOOLS --> T2[isLeapYear<br>Python 计算闰年]
+        TOOLS --> T3[getCwd<br>os.getcwd]
+        TOOLS --> T4[listDir<br>os.listdir]
+        TOOLS --> T5[getFileType<br>os.path + splitext]
+        TOOLS --> T6[readFile<br>open 读文本]
+        TOOLS --> T7[createFile<br>open 写新文件]
+        TOOLS --> T8[editFile<br>open 覆盖写入]
+        TOOLS --> T9[mkdir<br>os.makedirs]
+        TOOLS --> T10[rmdir<br>shutil.rmtree]
+        TOOLS --> T11[deleteFile<br>os.remove]
+        TOOLS --> T12[rename<br>os.rename]
+    end
+
+    subgraph 配置
+        CFG[config.ini<br>base_url / api_key / model]
+        B -.读取.- CFG
+        C -.读取.- CFG
+    end
+
+    style A fill:#e8f5e9
+    style F fill:#e8f5e9
+    style CFG fill:#fff3e0
+    style TOOLS fill:#fce4ec
