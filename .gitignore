@@ -2,6 +2,11 @@
 __pycache__/
 *.py[cod]
 *.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
 
 # 密钥文件（绝对不能提交！）
 config.ini
@@ -15,17 +20,32 @@ office-test/officecli-win-x64.exe.update
 .agents/context/*.jsonl
 .agents/sessions/*.jsonl
 
+# 数据库与缓存
+*.db
+*.sqlite
+*.sqlite3
+*.cache
+train.cache
+val.cache
+
+# 模型权重（可选，体积大按需保留）
+# *.pt
+# *.pth
+# *.onnx
+
 # 生成的测试文档（运行 prist 时创建的，非源码）
 *.docx
 *.pptx
 *.txt
 !requirements.txt
 
-# IDE
+# IDE / 系统
 .idea/
 .vscode/
 *.swp
-
-# 系统
+*.log
 .DS_Store
 Thumbs.db
+
+# Node
+node_modules/
