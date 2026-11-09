@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+
+# 密钥文件（绝对不能提交！）
+config.ini
+.mcp.json
+
+# 大文件/二进制可执行
+office-test/officecli-win-x64.exe
+office-test/officecli-win-x64.exe.update
+
+# 运行时数据
+.agents/context/*.jsonl
+.agents/sessions/*.jsonl
+
+# 生成的测试文档（运行 prist 时创建的，非源码）
+*.docx
+*.pptx
+*.txt
+!requirements.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 系统
+.DS_Store
+Thumbs.db
