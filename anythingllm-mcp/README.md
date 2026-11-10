@@ -1,10 +1,13 @@
 # AnythingLLM MCP Server (MVP)
 
-把本机 AnythingLLM 的**第一个工作区**包装成 MCP 工具，向它提问并返回 AI 回答。
+把本机 AnythingLLM 包装成 MCP 工具：工作区查询、对话问答、文档上传与向量化。
 
 - 协议：MCP `2026-07-28`（Streamable HTTP，无状态）
 - 传输：HTTP（非 stdio），端点 `POST http://127.0.0.1:8101/mcp`
-- 唯一工具：`ask_first_workspace(message)` — 取第一个工作区 → 发消息 → 返回回答文本
+- 工具：
+  - `list_workspaces()` — 列出全部工作区（name + slug）
+  - `ask_first_workspace(message)` — 取第一个工作区 → 发消息 → 返回回答文本
+  - `upload_document(file_path, workspace_slug?)` — 上传本地文件并向量化进工作区
 - 语言：Python 3.10+
 
 ## 1. 前置条件
@@ -114,7 +117,7 @@ D:\damoxwenjian\
 │       ├── __init__.py
 │       ├── __main__.py       # uvicorn 入口
 │       ├── config.py         # 环境变量 → Settings
-│       └── server.py         # MCPServer + ask_first_workspace 工具
+│       └── server.py         # MCPServer + 3 个工具（工作区/对话/文档上传）
 └── .venv\                    # 独立虚拟环境
 ```
 
@@ -122,9 +125,13 @@ D:\damoxwenjian\
 
 | 工具 | 参数 | 返回 | 说明 |
 |---|---|---|---|
+| `list_workspaces` | 无 | 工作区列表文本 | `GET /api/v1/workspaces` |
 | `ask_first_workspace` | `message: string`（必填） | AI 回答文本 | 自动选第一个工作区并发问 |
+| `upload_document` | `file_path: string`（必填）、`workspace_slug: string`（可选，默认第一个工作区） | 文档位置 + 工作区 slug | 上传并向量化 |
 
-流程：`GET /api/v1/workspaces` → 取 `workspaces[0].slug` → `POST /api/v1/workspace/{slug}/chat`（`{message, mode:"chat"}`）→ 返回 `textResponse`。
+对话流程：`GET /api/v1/workspaces` → 取 `workspaces[0].slug` → `POST /api/v1/workspace/{slug}/chat`（`{message, mode:"chat"}`）→ 返回 `textResponse`。
+
+上传流程：`POST /api/v1/document/upload`（multipart）→ 取 `documents[0].location` → `POST /api/v1/workspace/{slug}/update-embeddings`（`{"adds": [location]}`）。
 
 ## 10. 常见问题
 

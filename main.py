@@ -41,9 +41,9 @@ UI_ENTRYPOINTS: dict[str, tuple[str, str]] = {
 }
 
 
-def _find_agents_md() -> Path | None:
-    """在 cwd 和项目根找 AGENTS.md。"""
-    for p in (Path.cwd() / "AGENTS.md", PROJECT_ROOT / "AGENTS.md"):
+def _find_agents_md(name: str = "AGENTS.md") -> Path | None:
+    """在 cwd 和项目根找项目指令文件（文件名可在 config.ini [app] agents_md_name 配置）。"""
+    for p in (Path.cwd() / name, PROJECT_ROOT / name):
         if p.is_file():
             return p
     return None
@@ -54,7 +54,7 @@ def build_agent(config_path: str | None = None):
     settings = load_settings(config_path)
     skills = discover_skills()
 
-    agents_md = _find_agents_md()
+    agents_md = _find_agents_md(settings.app.agents_md_name)
     system_prompt = build_system_prompt(skills, agents_md_path=agents_md)
 
     archive_dir = Path(PROJECT_ROOT) / ".agents" / "context"

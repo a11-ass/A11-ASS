@@ -30,6 +30,9 @@ class AppSettings:
     max_tool_in_sidebar: int = 5            # 侧栏最多显示几个工具名
     max_recent_in_sidebar: int = 2          # 侧栏最近调用条数
     archive_dir_name: str = ".agents/context"  # 归档目录相对项目根的路径
+    max_tool_steps: int = 12                # 单轮对话最大工具调用步数（防死循环）
+    agents_md_name: str = "AGENTS.md"       # 项目指令文件名（兼容 AGENT.md 等等价命名）
+    file_allowed_roots: str = ""            # 文件工具额外允许的根目录（逗号分隔，空=仅项目根+cwd）
 
 
 @dataclass(frozen=True)
@@ -88,6 +91,13 @@ max_tool_in_sidebar = 5
 max_recent_in_sidebar = 2
 # 归档目录相对项目根的路径
 archive_dir_name = .agents/context
+# 单轮对话最大工具调用步数（防止工具调用死循环）
+max_tool_steps = 12
+# 项目指令文件名（自动注入 System Prompt，如 AGENTS.md / AGENT.md）
+agents_md_name = AGENTS.md
+# 文件工具额外允许的根目录（逗号分隔；默认仅允许项目根目录与当前工作目录）
+# 例：file_allowed_roots = D:/学校用的/大模型, E:/data
+file_allowed_roots =
 """
 
 
@@ -154,6 +164,9 @@ def _parse_app(parser: configparser.ConfigParser) -> AppSettings:
         max_tool_in_sidebar=_int("max_tool_in_sidebar", AppSettings.max_tool_in_sidebar),
         max_recent_in_sidebar=_int("max_recent_in_sidebar", AppSettings.max_recent_in_sidebar),
         archive_dir_name=section.get("archive_dir_name", AppSettings.archive_dir_name).strip(),
+        max_tool_steps=_int("max_tool_steps", AppSettings.max_tool_steps),
+        agents_md_name=section.get("agents_md_name", AppSettings.agents_md_name).strip() or AppSettings.agents_md_name,
+        file_allowed_roots=section.get("file_allowed_roots", AppSettings.file_allowed_roots).strip(),
     )
 
 

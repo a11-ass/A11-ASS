@@ -12,7 +12,7 @@ from ...application.registry import FunctionTool, ToolRegistry
 from ..mcp_client import MCPClient
 from .cli_tools import build_cli_tools
 from .create_skill_tool import build_createSkill_tool
-from .file_tools import FILE_TOOLS
+from .file_tools import FILE_TOOLS, set_extra_roots
 from .office_tools import build_office_tools
 from .recall_tool import build_recallContext_tool
 from .skill_tools import build_loadSkill_tool
@@ -40,6 +40,7 @@ def build_default_registry(
 ) -> ToolRegistry:
     global _context_archive
 
+    set_extra_roots(settings.app.file_allowed_roots)
     tools: list[FunctionTool] = [*SYSTEM_TOOLS, *FILE_TOOLS]
     tools.extend(build_cli_tools())
     tools.extend(build_web_tools(settings.search))

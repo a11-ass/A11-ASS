@@ -174,21 +174,56 @@ class AgentService:
         yield TurnStarted(user_text=question)
 
         try:
-            reply = self._llm.complete(self._messages, self._tools.specs)
-            tool_calls = list(reply.tool_calls)
-
+            app_settings = getattr(self, "_app_settings", None)
+            max_steps = getattr(app_settings, "max_tool_steps", 12) or 12
+            if not isinstance(max_steps, int) or max_steps <= 0:
+                max_steps = 12
             autofallback_skill: str | None = None
-            if not tool_calls and self._is_loadskill_in_tools():
-                matched = self._match_skill_name_in_text(reply.content or "")
-                if matched:
-                    autofallback_skill = matched
-                    tool_calls = [ToolCall(
-                        id="skill-autofallback-" + matched,
-                        name="loadSkill",
-                        arguments={"name": matched},
-                    )]
+            used_tools = False
+            tool_step = 0
 
-            if tool_calls:
+            # 多轮工具闭环：complete → tool_calls → 执行回填 → 再 complete，
+            # 直到模型不再调用工具或达到最大步数上限（防死循环）。
+            while True:
+                reply = self._llm.complete(self._messages, self._tools.specs)
+                tool_calls = list(reply.tool_calls)
+
+                # Skill 自动兜底：首轮模型回复含 Skill 名称且未触发 loadSkill 时自动调用
+                if not tool_calls and tool_step == 0 and self._is_loadskill_in_tools():
+                    matched = self._match_skill_name_in_text(reply.content or "")
+                    if matched:
+                        autofallback_skill = matched
+                        tool_calls = [ToolCall(
+                            id="skill-autofallback-" + matched,
+                            name="loadSkill",
+                            arguments={"name": matched},
+                        )]
+
+                if not tool_calls:
+                    if not used_tools:
+                        # 首轮即无工具调用：直接输出本次回复
+                        answer = reply.content or ""
+                        if answer:
+                            yield TextDelta(text=answer)
+                        self._messages.append(ChatMessage(role="assistant", content=answer))
+                        yield TurnCompleted(text=answer)
+                        return
+                    break  # 工具链结束 → 走流式总结
+
+                # 最大步数保护：防止工具调用死循环
+                if tool_step + len(tool_calls) > max_steps:
+                    yield ToolFinished(
+                        name="__guard__",
+                        ok=False,
+                        output="已达到最大工具调用步数(%d)，停止继续调用" % max_steps,
+                    )
+                    self._messages.append(ChatMessage(
+                        role="system",
+                        content="已达到最大工具调用步数(%d)，请基于已有信息直接回答用户。" % max_steps,
+                    ))
+                    break
+
+                used_tools = True
                 self._messages.append(
                     ChatMessage(
                         role="assistant",
@@ -203,32 +238,28 @@ class AgentService:
                     self._messages.append(
                         ChatMessage(role="tool", content=result.output, tool_call_id=call.id)
                     )
+                tool_step += len(tool_calls)
 
-                chunks: list[str] = []
-                for delta in self._llm.stream(self._messages):
-                    if not delta:
-                        continue
-                    chunks.append(delta)
-                    yield TextDelta(text=delta)
-                answer = "".join(chunks)
+            # 工具链结束 → 流式生成最终回答
+            chunks: list[str] = []
+            for delta in self._llm.stream(self._messages):
+                if not delta:
+                    continue
+                chunks.append(delta)
+                yield TextDelta(text=delta)
+            answer = "".join(chunks)
 
-                overrides_delta = False
-                if autofallback_skill and autofallback_skill in _KNOWN_SKILL_FALLBACKS:
-                    encrypted = _KNOWN_SKILL_FALLBACKS[autofallback_skill](question)
-                    answer = (
-                        f"【本地 Skill 执行】mini-encryption →\n"
-                        f"原文: {question}\n加密后: {encrypted}"
-                    )
-                    overrides_delta = True
+            overrides_delta = False
+            if autofallback_skill and autofallback_skill in _KNOWN_SKILL_FALLBACKS:
+                encrypted = _KNOWN_SKILL_FALLBACKS[autofallback_skill](question)
+                answer = (
+                    f"【本地 Skill 执行】mini-encryption →\n"
+                    f"原文: {question}\n加密后: {encrypted}"
+                )
+                overrides_delta = True
 
-                self._messages.append(ChatMessage(role="assistant", content=answer))
-                yield TurnCompleted(text=answer, overrides_delta=overrides_delta)
-            else:
-                answer = reply.content or ""
-                if answer:
-                    yield TextDelta(text=answer)
-                self._messages.append(ChatMessage(role="assistant", content=answer))
-                yield TurnCompleted(text=answer)
+            self._messages.append(ChatMessage(role="assistant", content=answer))
+            yield TurnCompleted(text=answer, overrides_delta=overrides_delta)
 
         except Exception as exc:
             yield TurnFailed(message=_format_error(exc))

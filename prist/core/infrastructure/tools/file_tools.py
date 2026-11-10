@@ -1,12 +1,18 @@
-"""本地文件工具：目录浏览、读写、创建、删除与重命名。"""
+"""本地文件工具：目录浏览、读写、创建、删除与重命名。
+
+安全边界：所有路径必须落在「项目根目录 / 当前工作目录 / config.ini
+[app] file_allowed_roots 额外允许的根目录」之内，越界一律拒绝。
+"""
 
 from __future__ import annotations
 
 import os
 import shutil
+from pathlib import Path
 
 from ...application.registry import FunctionTool
 from ...domain.models import ToolSpec
+from ..config import PROJECT_ROOT
 
 BINARY_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".pdf",
@@ -16,13 +22,53 @@ BINARY_EXTENSIONS = {
 
 MAX_READ_CHARS = 8000
 
+_EXTRA_ROOTS: list[Path] = []
+
+
+def set_extra_roots(csv: str) -> None:
+    """从 config.ini [app] file_allowed_roots 追加允许的根目录（逗号分隔）。"""
+    _EXTRA_ROOTS.clear()
+    for part in csv.split(","):
+        part = part.strip()
+        if part:
+            _EXTRA_ROOTS.append(Path(part).expanduser().resolve())
+
+
+def _allowed_roots() -> list[Path]:
+    return [PROJECT_ROOT.resolve(), Path.cwd().resolve(), *_EXTRA_ROOTS]
+
+
+def _safe(path: str) -> str | None:
+    """解析为绝对路径并校验在允许根目录内；越界返回 None。"""
+    try:
+        full = Path(path).expanduser()
+        if not full.is_absolute():
+            full = Path.cwd() / full
+        full = full.resolve()
+    except OSError:
+        return None
+    for root in _allowed_roots():
+        if full == root or root in full.parents:
+            return str(full)
+    return None
+
+
+def _reject(path: str) -> str:
+    return (
+        "错误: 路径越界，仅允许在项目根目录、当前工作目录"
+        "或 config.ini [app] file_allowed_roots 指定的目录内操作 - %s" % path
+    )
+
 
 def get_cwd(args=None) -> str:
     return os.getcwd()
 
 
 def list_dir(args) -> str:
-    path = args.get("path", ".")
+    raw = args.get("path", ".")
+    path = _safe(raw)
+    if path is None:
+        return _reject(raw)
     if not os.path.isdir(path):
         return "错误: 目录不存在 - %s" % path
     items = sorted(os.listdir(path))
@@ -35,7 +81,10 @@ def list_dir(args) -> str:
 
 
 def get_file_type(args) -> str:
-    path = args["path"]
+    raw = args["path"]
+    path = _safe(raw)
+    if path is None:
+        return _reject(raw)
     if not os.path.exists(path):
         return "错误: 文件不存在 - %s" % path
     ext = os.path.splitext(path)[1].lower()
@@ -45,7 +94,10 @@ def get_file_type(args) -> str:
 
 
 def read_file(args) -> str:
-    path = args["path"]
+    raw = args["path"]
+    path = _safe(raw)
+    if path is None:
+        return _reject(raw)
     if not os.path.isfile(path):
         return "错误: 文件不存在 - %s" % path
     if os.path.splitext(path)[1].lower() in BINARY_EXTENSIONS:
@@ -64,17 +116,25 @@ def create_file(args) -> str:
     directory = args.get("directory", ".")
     filename = args["filename"]
     content = args.get("content", "")
-    if not os.path.isdir(directory):
-        os.makedirs(directory, exist_ok=True)
-    full = os.path.join(directory, filename)
+    base = _safe(directory)
+    if base is None:
+        return _reject(directory)
+    full = _safe(os.path.join(base, filename))
+    if full is None:
+        return _reject(os.path.join(directory, filename))
+    if not os.path.isdir(base):
+        os.makedirs(base, exist_ok=True)
     with open(full, "w", encoding="utf-8") as file:
         file.write(content)
     return "已创建文件: %s (%d 字节)" % (full, len(content))
 
 
 def edit_file(args) -> str:
-    path = args["path"]
+    raw = args["path"]
     new_content = args.get("new_content", "")
+    path = _safe(raw)
+    if path is None:
+        return _reject(raw)
     if not os.path.isfile(path):
         return "错误: 文件不存在 - %s" % path
     with open(path, "w", encoding="utf-8") as file:
@@ -83,7 +143,10 @@ def edit_file(args) -> str:
 
 
 def mkdir(args) -> str:
-    path = args["path"]
+    raw = args["path"]
+    path = _safe(raw)
+    if path is None:
+        return _reject(raw)
     if os.path.exists(path):
         return "目录已存在: %s" % path
     os.makedirs(path, exist_ok=True)
@@ -91,7 +154,10 @@ def mkdir(args) -> str:
 
 
 def rmdir(args) -> str:
-    path = args["path"]
+    raw = args["path"]
+    path = _safe(raw)
+    if path is None:
+        return _reject(raw)
     if not os.path.isdir(path):
         return "错误: 目录不存在 - %s" % path
     shutil.rmtree(path)
@@ -99,7 +165,10 @@ def rmdir(args) -> str:
 
 
 def delete_file(args) -> str:
-    path = args["path"]
+    raw = args["path"]
+    path = _safe(raw)
+    if path is None:
+        return _reject(raw)
     if not os.path.isfile(path):
         return "错误: 文件不存在 - %s" % path
     os.remove(path)
@@ -107,8 +176,13 @@ def delete_file(args) -> str:
 
 
 def rename(args) -> str:
-    old_path = args["old_path"]
-    new_path = args["new_path"]
+    old_raw, new_raw = args["old_path"], args["new_path"]
+    old_path = _safe(old_raw)
+    if old_path is None:
+        return _reject(old_raw)
+    new_path = _safe(new_raw)
+    if new_path is None:
+        return _reject(new_raw)
     if not os.path.exists(old_path):
         return "错误: 源不存在 - %s" % old_path
     if os.path.exists(new_path):
